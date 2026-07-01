@@ -1,30 +1,25 @@
-# AI-RESUME-SCANNER
 import streamlit as st
 import PyPDF2
 import json
+import os
 from groq import Groq
+from dotenv import load_dotenv
 
-# -------------------------
-# PAGE SETTINGS
-# -------------------------
-st.set_page_config(
-    page_title="AI Resume Scanner",
-    page_icon="📄",
-    layout="wide"
-)
+# ---------------------------
+# Load API Key
+# ---------------------------
+load_dotenv()
 
-st.title("📄 AI Resume Scanner")
-st.write("Upload your resume and get ATS score with AI analysis.")
+api_key = os.getenv("GROQ_API_KEY")
 
-# -------------------------
-# GROQ SETUP
-# -------------------------
-client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+client = Groq(api_key=api_key)
 
-
+# ---------------------------
+# AI Function
+# ---------------------------
 def ask_ai(prompt):
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",   # Updated model
+        model="llama-3.3-70b-versatile",
         messages=[
             {"role": "user", "content": prompt}
         ],
@@ -33,23 +28,30 @@ def ask_ai(prompt):
     return response.choices[0].message.content
 
 
-# -------------------------
-# PDF TEXT EXTRACTION
-# -------------------------
+# ---------------------------
+# PDF Text Extraction
+# ---------------------------
 def extract_pdf(file):
     reader = PyPDF2.PdfReader(file)
     text = ""
+
     for page in reader.pages:
         page_text = page.extract_text()
         if page_text:
             text += page_text
+
     return text
 
 
-# -------------------------
-# LAYOUT
-# -------------------------
-left, right = st.columns([1, 1])
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.set_page_config(page_title="AI Resume Scanner", layout="wide")
+
+st.title("AI Resume Scanner")
+st.write("Upload resume and get ATS score")
+
+left, right = st.columns(2)
 
 with left:
     st.subheader("Upload Resume")
@@ -61,7 +63,7 @@ with left:
 
     job_role = st.text_input(
         "Target Job Role",
-        placeholder="e.g. Data Scientist"
+        placeholder="Example: Data Scientist"
     )
 
     job_desc = st.text_area(
@@ -74,16 +76,14 @@ with left:
         use_container_width=True
     )
 
-# -------------------------
-# ANALYSIS
-# -------------------------
+
 with right:
     if scan_btn:
 
         if not resume_file:
-            st.error("Please upload a PDF resume.")
+            st.error("Please upload resume")
         elif not job_role:
-            st.error("Please enter job role.")
+            st.error("Please enter job role")
         else:
             with st.spinner("Scanning Resume..."):
 
@@ -92,36 +92,36 @@ with right:
                 prompt = f"""
 You are an ATS and HR expert.
 
-Analyze this resume for the role: {job_role}
+Analyze this resume for role: {job_role}
 
-Job description:
-{job_desc}
-
-Resume text:
+Resume:
 {resume_text[:3000]}
+
+Job Description:
+{job_desc}
 
 Return ONLY valid JSON.
 
-JSON format:
+Format:
 {{
-  "ats_score": 0-100,
-  "overall_rating": "Excellent/Good/Average/Poor",
-  "strengths": ["","",""],
-  "weaknesses": ["","",""],
-  "missing_keywords": ["","","","",""],
-  "improvement_tips": ["","",""],
-  "summary": "Two sentence summary"
+"ats_score": 0-100,
+"overall_rating": "Excellent/Good/Average/Poor",
+"strengths": ["","",""],
+"weaknesses": ["","",""],
+"missing_keywords": ["","","","",""],
+"improvement_tips": ["","",""],
+"summary": "2 sentence summary"
 }}
 """
 
-                try:
-                    raw = ask_ai(prompt).strip()
+                raw = ask_ai(prompt).strip()
 
-                    # Clean markdown JSON
+                try:
                     if "```" in raw:
                         raw = raw.split("```")[1]
-                        if raw.startswith("json"):
-                            raw = raw[4:]
+
+                    if raw.startswith("json"):
+                        raw = raw[4:]
 
                     result = json.loads(raw)
 
@@ -136,14 +136,12 @@ JSON format:
 
                     st.markdown(
                         f"""
-<div style='text-align:center;
-padding:20px;
-background:#1a1a2e;
-border-radius:12px;
+<div style='text-align:center;padding:20px;
+background:#1a1a2e;border-radius:12px;
 border:2px solid {color};'>
 <h1 style='color:{color};font-size:64px'>{score}</h1>
-<p style='color:white;'>ATS Score / 100</p>
-<p style='color:white;'>{result["overall_rating"]}</p>
+<p>ATS Score / 100</p>
+<p>{result["overall_rating"]}</p>
 </div>
 """,
                         unsafe_allow_html=True
@@ -155,21 +153,22 @@ border:2px solid {color};'>
 
                     with c1:
                         st.success("Strengths")
-                        for item in result["strengths"]:
-                            st.write("•", item)
+                        for s in result["strengths"]:
+                            st.write("- " + s)
 
                         st.error("Weaknesses")
-                        for item in result["weaknesses"]:
-                            st.write("•", item)
+                        for w in result["weaknesses"]:
+                            st.write("- " + w)
 
                     with c2:
                         st.warning("Missing Keywords")
-                        for item in result["missing_keywords"]:
-                            st.write("•", item)
+                        for k in result["missing_keywords"]:
+                            st.write("- " + k)
 
                         st.info("Improvement Tips")
-                        for item in result["improvement_tips"]:
-                            st.write("•", item)
+                        for t in result["improvement_tips"]:
+                            st.write("- " + t)
 
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error("Error parsing AI response")
+                    st.code(raw)
